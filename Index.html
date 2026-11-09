@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instagramio - Reels & Social Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        instagram: {
+                            pink: '#E1306C',
+                            purple: '#833AB4',
+                            orange: '#F56040',
+                            yellow: '#FCAF45'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar hide for reels */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-black text-white font-sans antialiased selection:bg-pink-500 selection:text-white min-h-screen flex flex-col">
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="sticky top-0 z-50 bg-black/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-2 cursor-pointer" onclick="router.navigate('feed')">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-pink-600 to-purple-600 flex items-center justify-center shadow-lg shadow-pink-500/30">
+                <i class="fa-solid fa-play text-white text-lg"></i>
+            </div>
+            <span class="text-xl font-extrabold tracking-wider bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">Instagramio</span>
+        </div>
+
+        <div class="flex items-center space-x-4" id="nav-actions">
+            <!-- Dynamic Actions inserted by JS -->
+        </div>
+    </header>
+
+    <!-- MAIN APP CONTAINER -->
+    <main class="flex-1 flex flex-col relative overflow-hidden" id="main-content">
+        <!-- Dynamic Views rendered here -->
+    </main>
+
+    <!-- MOBILE BOTTOM NAVIGATION -->
+    <nav class="fixed bottom-0 left-0 right-0 z-40 bg-black/95 backdrop-blur-md border-t border-zinc-800 px-6 py-3 flex justify-around items-center md:hidden" id="mobile-nav">
+        <button onclick="router.navigate('feed')" class="text-white text-xl"><i class="fa-solid fa-house"></i></button>
+        <button onclick="openUploadModal()" class="text-white text-xl"><i class="fa-regular fa-square-plus"></i></button>
+        <button onclick="router.navigate('profile')" class="text-white text-xl"><i class="fa-regular fa-user"></i></button>
+    </nav>
+
+    <!-- MODALS CONTAINER -->
+    <div id="modal-container"></div>
+
+    <script>
+        // --- DATABASE & STATE MANAGEMENT (LocalStorage simulated backend) ---
+        const DB = {
+            getUsers: () => JSON.parse(localStorage.getItem('ig_users')) || [],
+            setUsers: (users) => localStorage.setItem('ig_users', JSON.stringify(users)),
+            
+            getReels: () => JSON.parse(localStorage.getItem('ig_reels')) || [
+                { id: 1, username: 'admin_super', userPic: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-girl-in-neon-sign-fluorescent-lights-41566-large.mp4', caption: 'Welcome to Instagramio Reels! 🔥 #instagramio #launch', likes: 1240, comments: 45, shares: 12 },
+                { id: 2, username: 'creator_alex', userPic: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-dj-playing-music-in-a-nightclub-41565-large.mp4', caption: 'Vibing with the new setup! 🎧✨ #vibes #music', likes: 850, comments: 22, shares: 5 }
+            ],
+            setReels: (reels) => localStorage.setItem('ig_reels', JSON.stringify(reels)),
+
+            getCurrentUser: () => JSON.parse(localStorage.getItem('ig_current_user')) || null,
+            setCurrentUser: (user) => localStorage.setItem('ig_current_user', JSON.stringify(user)),
+
+            getLogs: () => JSON.parse(localStorage.getItem('ig_logs')) || [],
+            addLog: (action, target, reason = '') => {
+                const logs = DB.getLogs();
+                const user = DB.getCurrentUser();
+                logs.unshift({ admin: user ? user.username : 'System', action, target, reason, time: new Date().toLocaleString() });
+                localStorage.setItem('ig_logs', JSON.stringify(logs));
+            }
+        };
+
+        // --- ROUTER SYSTEM ---
+        const router = {
+            navigate: (view, param = null) => {
+                const currentUser = DB.getCurrentUser();
+                const main = document.getElementById('main-content');
+                
+                // Route Guards
+                if (view === 'admin') {
+                    if (!currentUser || currentUser.role !== 'super_admin') {
+                        main.innerHTML = renderAccessDenied();
+                        updateNav();
+                        return;
+                    }
+                    main.innerHTML = renderAdminDashboard();
+                    initAdminDashboard();
+                    updateNav();
+                    return;
+                }
+
+                if (view === 'profile' && !currentUser) {
+                    openAuthModal('signin');
+                    return;
+                }
+
+                switch(view) {
+                    case 'feed':
+                        main.innerHTML = renderFeed();
+                        initFeed();
+                        break;
+                    case 'profile':
+                        main.innerHTML = renderProfile(param || currentUser);
+                        break;
+                    default:
+                        main.innerHTML = renderFeed();
+                        initFeed();
+                }
+                updateNav();
+            }
+        };
+
+        // --- NAVIGATION HEADER UPDATER ---
+        function updateNav() {
+            const currentUser = DB.getCurrentUser();
+            const navActions = document.getElementById('nav-actions');
+            
+            if (!currentUser) {
+                navActions.innerHTML = `
+                    <button onclick="openAuthModal('signin')" class="px-4 py-1.5 text-sm font-semibold bg-gradient-to-r from-pink-600 to-purple-600 rounded-full hover:opacity-90 transition">Sign In</button>
+                    <button onclick="openAuthModal('signup')" class="px-4 py-1.5 text-sm font-semibold border border-zinc-700 rounded-full hover:border-zinc-500 transition hidden sm:block">Sign Up</button>
+                `;
+            } else {
+                let adminBtn = currentUser.role === 'super_admin' ? `<button onclick="router.navigate('admin')" class="px-3 py-1 text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-shield-halved mr-1"></i> Admin</button>` : '';
+                navActions.innerHTML = `
+                    ${adminBtn}
+                    <button onclick="openUploadModal()" class="hidden sm:flex items-center space-x-1 px-3 py-1.5 text-sm font-semibold bg-zinc-800 hover:bg-zinc-700 rounded-full transition"><i class="fa-solid fa-plus"></i><span>Upload</span></button>
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick="router.navigate('profile')">
+                        <img src="${currentUser.profile_pic}" class="w-8 h-8 rounded-full object-cover border border-zinc-700">
+                    </div>
+                    <button onclick="logout()" class="text-zinc-400 hover:text-red-500 transition text-sm"><i class="fa-solid fa-right-from-bracket"></i></button>
+                `;
+            }
+        }
+
+        // --- RENDER VIEWS ---
+        function renderFeed() {
+            const reels = DB.getReels();
+            return `
+                <div class="flex-1 overflow-y-auto no-scrollbar snap-y snap-mandatory flex flex-col items-center py-4 space-y-4" id="reels-container">
+                    ${reels.map((reel, idx) => `
+                        <div class="relative w-full max-w-sm h-[80vh] bg-zinc-900 rounded-2xl overflow-hidden snap-center flex flex-col justify-end shadow-2xl border border-zinc-800 reel-card" data-index="${idx}">
+                            <video src="${reel.videoUrl}" class="absolute inset-0 w-full h-full object-cover" loop playsinline muted onclick="togglePlay(this)"></video>
+                            <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 pointer-events-none"></div>
+                            
+                            <!-- Right Side Action Buttons -->
+                            <div class="absolute right-4 bottom-16 flex flex-col items-center space-y-4 z-10">
+                                <button onclick="likeReel(${reel.id})" class="flex flex-col items-center text-white group">
+                                    <div class="w-11 h-11 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center group-hover:bg-pink-600/50 transition">
+                                        <i class="fa-solid fa-heart text-xl text-pink-500"></i>
+                                    </div>
+                                    <span class="text-xs mt-1 font-semibold">${reel.likes}</span>
+                                </button>
+                                <button onclick="openComments(${reel.id})" class="flex flex-col items-center text-white group">
+                                    <div class="w-11 h-11 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center group-hover:bg-zinc-700/50 transition">
+                                        <i class="fa-solid fa-comment text-xl"></i>
+                                    </div>
+                                    <span class="text-xs mt-1 font-semibold">${reel.comments}</span>
+                                </button>
+                                <button onclick="shareReel(${reel.id})" class="flex flex-col items-center text-white group">
+                                    <div class="w-11 h-11 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center group-hover:bg-zinc-700/50 transition">
+                                        <i class="fa-solid fa-share text-xl"></i>
+                                    </div>
+                                    <span class="text-xs mt-1 font-semibold">Share</span>
+                                </button>
+                            </div>
+
+                            <!-- Bottom Reel Info -->
+                            <div class="relative p-4 z-10 flex flex-col space-y-2">
+                                <div class="flex items-center space-x-3 cursor-pointer" onclick="viewUser('${reel.username}')">
+                                    <img src="${reel.userPic}" class="w-10 h-10 rounded-full border border-pink-500 object-cover">
+                                    <span class="font-bold text-sm">@${reel.username}</span>
+                                    <button class="px-3 py-1 text-xs font-semibold bg-white/20 hover:bg-white/30 rounded-full backdrop-blur-sm transition">Follow</button>
+                                </div>
+                                <p class="text-sm text-zinc-200 line-clamp-2">${reel.caption}</p>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderProfile(user) {
+            const currentUser = DB.getCurrentUser();
+            return `
+                <div class="max-w-2xl mx-auto w-full p-6 space-y-6">
+                    <div class="flex items-center space-x-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+                        <img src="${user.profile_pic || 'https://via.placeholder.com/150'}" class="w-24 h-24 rounded-full object-cover border-2 border-pink-500">
+                        <div class="space-y-1 flex-1">
+                            <h2 class="text-2xl font-bold">@${user.username}</h2>
+                            <p class="text-zinc-400 text-sm">${user.fullname}</p>
+                            <p class="text-xs text-amber-400 uppercase tracking-widest font-semibold">${user.role === 'super_admin' ? 'Super Admin' : 'User'}</p>
+                            <div class="flex space-x-6 pt-2 text-sm">
+                                <div><span class="font-bold">12</span> Reels</div>
+                                <div><span class="font-bold">340</span> Followers</div>
+                                <div><span class="font-bold">180</span> Following</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAccessDenied() {
+            return `
+                <div class="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4">
+                    <div class="w-20 h-20 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center text-4xl border border-red-500/20">
+                        <i class="fa-solid fa-lock"></i>
+                    </div>
+                    <h1 class="text-3xl font-extrabold">Access Denied</h1>
+                    <p class="text-zinc-400 max-w-md">You do not have administrative privileges to view this private dashboard. This area is restricted exclusively to the Super Admin.</p>
+                    <button onclick="router.navigate('feed')" class="px-6 py-2 bg-white text-black font-semibold rounded-full hover:bg-zinc-200 transition">Back to Home</button>
+                </div>
+            `;
+        }
+
+        function renderAdminDashboard() {
+            const users = DB.getUsers();
+            const reels = DB.getReels();
+            const logs = DB.getLogs();
+
+            return `
+                <div class="flex-1 overflow-y-auto p-6 space-y-8 max-w-7xl mx-auto w-full">
+                    <div class="flex justify-between items-center border-b border-zinc-800 pb-4">
+                        <div>
+                            <h1 class="text-3xl font-extrabold bg-gradient-to-r from-amber-400 to-pink-500 bg-clip-text text-transparent">Super Admin Dashboard</h1>
+                            <p class="text-zinc-400 text-sm">Secure Private Management Portal</p>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button onclick="DB.addLog('Exported Data', 'System'); alert('Data exported successfully');" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold rounded-xl transition"><i class="fa-solid fa-download mr-2"></i>Export Logs</button>
+                        </div>
+                    </div>
+
+                    <!-- Stats Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-1">
+                            <p class="text-zinc-400 text-xs font-semibold uppercase">Total Registered Users</p>
+                            <h3 class="text-3xl font-bold">${users.length}</h3>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-1">
+                            <p class="text-zinc-400 text-xs font-semibold uppercase">Active Reels</p>
+                            <h3 class="text-3xl font-bold">${reels.length}</h3>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-1">
+                            <p class="text-zinc-400 text-xs font-semibold uppercase">System Status</p>
+                            <h3 class="text-xl font-bold text-green-400 flex items-center mt-1"><span class="w-3 h-3 bg-green-500 rounded-full inline-block mr-2 animate-pulse"></span> Secured</h3>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-1">
+                            <p class="text-zinc-400 text-xs font-semibold uppercase">Admin Logs Count</p>
+                            <h3 class="text-3xl font-bold">${logs.length}</h3>
+                        </div>
+                    </div>
+
+                    <!-- User Management Section with Passwords / Login History -->
+                    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
+                        <h2 class="text-xl font-bold">User Management & Credentials</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="border-b border-zinc-800 text-zinc-400 uppercase text-xs">
+                                    <tr>
+                                        <th class="py-3 px-4">User</th>
+                                        <th class="py-3 px-4">Email & Password</th>
+                                        <th class="py-3 px-4">Mobile</th>
+                                        <th class="py-3 px-4">Role</th>
+                                        <th class="py-3 px-4">Status</th>
+                                        <th class="py-3 px-4">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-800">
+                                    ${users.map(u => `
+                                        <tr>
+                                            <td class="py-3 px-4 flex items-center space-x-3">
+                                                <img src="${u.profile_pic}" class="w-8 h-8 rounded-full object-cover">
+                                                <div>
+                                                    <p class="font-bold">@${u.username}</p>
+                                                    <p class="text-xs text-zinc-400">${u.fullname}</p>
+                                                </div>
+                                            </td>
+                                            <td class="py-3 px-4">
+                                                <p>${u.email}</p>
+                                                <p class="text-xs font-mono text-amber-400">Pass: ${u.rawPassword || '******'}</p>
+                                            </td>
+                                            <td class="py-3 px-4">${u.mobile}</td>
+                                            <td class="py-3 px-4"><span class="px-2 py-1 text-xs rounded font-semibold ${u.role==='super_admin'?'bg-amber-500/20 text-amber-400':'bg-zinc-800 text-zinc-300'}">${u.role}</span></td>
+                                            <td class="py-3 px-4"><span class="px-2 py-1 text-xs rounded font-semibold bg-green-500/20 text-green-400">${u.status || 'active'}</span></td>
+                                            <td class="py-3 px-4 space-x-2">
+                                                <button onclick="adminAction('suspend', '${u.email}')" class="px-2.5 py-1 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-semibold">Suspend</button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Admin Activity Logs -->
+                    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
+                        <h2 class="text-xl font-bold">Admin Activity Logs</
